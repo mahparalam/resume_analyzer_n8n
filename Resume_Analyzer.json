@@ -1,0 +1,280 @@
+{
+  "name": "Resume Analyzer",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "6c8486af-9962-432d-849e-9b099cf6dfe1",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/files/resume.pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "892d2b7c-33da-4235-b976-769f156cc542",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "9b94351a-f9ef-4159-8a0c-ea313bd6be3c",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "GPT-5.6-LUNA"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Resume Text:\n\n{{ $json.resume_text }}"
+            },
+            {
+              "role": "system",
+              "content": "You are a resume data extraction system.\n\nExtract the candidate's name and email address from the resume text.\n\nReturn ONLY valid JSON.\n\nUse exactly this structure:\n\n{\n  \"name\": \"\",\n  \"email\": \"\"\n}\n\nRules:\n- name must be the candidate's full name as written in the resume.\n- email must be the candidate's email address as written in the resume.\n- If a value cannot be found, return an empty string.\n- Do not guess or invent information.\n- Do not include markdown.\n- Do not include explanations outside the JSON."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        896,
+        0
+      ],
+      "id": "2566ae82-bd0b-41b5-a101-1380de23ad69",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "MS4V5VyyzauD9PLO",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.output[0].content[0].text;\n\nlet resumeData;\n\ntry {\n  resumeData = JSON.parse(text);\n} catch (error) {\n  throw new Error('OpenAI returned invalid JSON: ' + text);\n}\n\nconst input = $('Prepare Resume').item.json;\n\nreturn [\n  {\n    json: {\n      name: resumeData.name || '',\n      email: resumeData.email || '',\n      resume_text: input.resume_text || ''\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1264,
+        0
+      ],
+      "id": "8d2283c8-b086-409a-a095-4a8dd437875b",
+      "name": "Parse Resume Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      resume_text: $json.text\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "3b293d00-07c4-4187-9831-f26be92a743f",
+      "name": "Prepare Resume"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "resumes",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.name }}",
+            "email": "={{ $json.email }}",
+            "resume_text": "={{ $json.resume_text }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resume_text",
+              "displayName": "resume_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1440,
+        0
+      ],
+      "id": "1b1b3896-f322-4a83-b7a2-489437b3b46b",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "QPfdmSSZkX5YDimJ",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Prepare Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse Resume Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Resume": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Resume Data": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "813d6903-1842-40fe-bbfe-42d94e74825a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c060126ca28f723a1bd8e64341f6427bccd9ccf076096ad500a3fb9cb743f808"
+  },
+  "nodeGroups": [],
+  "id": "262O0u23YRw9ELY2",
+  "tags": []
+}

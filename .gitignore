@@ -1,0 +1,24 @@
+cat > .gitignore <<'EOF'
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Resume / personal files
+files/
+*.pdf
+
+# n8n / local data
+.n8n/
+node_modules/
+
+# PostgreSQL / Docker data
+postgres_data/
+n8n_data/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+EOF

@@ -1,0 +1,239 @@
+{
+  "name": "Job Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "job",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -192,
+        0
+      ],
+      "id": "f50b70c3-11a1-41bc-a82f-609783dd0477",
+      "name": "Webhook",
+      "webhookId": "095f3ad2-d58f-48a0-b855-faaa79b18acc"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.6-luna",
+          "mode": "list",
+          "cachedResultName": "GPT-5.6-LUNA"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert technical recruiter and resume-job matching analyst.\n\nCompare the candidate's resume against the job description.\n\nEvaluate only evidence explicitly supported by the resume.\n\nIdentify:\n1. Required job skills\n2. Preferred job skills\n3. Required skills supported by the resume\n4. Preferred skills supported by the resume\n5. Important skills not supported by the resume\n6. Overall experience alignment\n\nFollow the configured output schema exactly.\nDo not return Markdown.\nDo not return explanations outside the structured output."
+            },
+            {
+              "content": "=CANDIDATE RESUME\n\nName:\n{{ $json.resume_name }}\n\nResume:\n{{ $json.resume_text }}\n\n\nJOB\n\nCompany:\n{{ $json.company }}\n\nPosition:\n{{ $json.job_title }}\n\nJob Description:\n{{ $json.job_description }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "builtInTools": {
+          "codeInterpreter": false
+        },
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"required_skills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"preferred_skills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"matched_required_skills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"matched_preferred_skills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"missing_skills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"experience_match\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"Strong\",\n        \"Moderate\",\n        \"Weak\"\n      ]\n    }\n  },\n  \"required\": [\n    \"required_skills\",\n    \"preferred_skills\",\n    \"matched_required_skills\",\n    \"matched_preferred_skills\",\n    \"missing_skills\",\n    \"experience_match\"\n  ],\n  \"additionalProperties\": false\n}"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "32e97b45-80ee-43b4-9e51-cbcc060d56ac",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "MS4V5VyyzauD9PLO",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, name, email, resume_text\nFROM resumes\nWHERE id = {{ $('Webhook').first().json.body.resume_id }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        256,
+        0
+      ],
+      "id": "473564c7-1e35-433d-a5b9-4efc12fba04a",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "QPfdmSSZkX5YDimJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const resume = $json;\nconst job = $('Webhook').first().json.body;\nconst jobRecord = $('Insert Job').first().json;\n\nreturn [\n  {\n    json: {\n      resume_id: resume.id,\n      resume_name: resume.name,\n      resume_text: resume.resume_text,\n\n      job_id: jobRecord.id,\n      company: job.company,\n      job_title: job.job_title,\n      job_url: job.job_url,\n      job_description: job.job_description\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "id": "1848cfb5-0eaf-4a1d-a332-cfe2b138bf3d",
+      "name": "Prepare Match Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const outputs = $json.output || [];\n\nconst message = outputs.find(item => item.type === 'message');\n\nif (!message) {\n  throw new Error('OpenAI message output was not found.');\n}\n\nconst content = message.content?.find(\n  item => item.type === 'output_text'\n);\n\nif (!content) {\n  throw new Error('OpenAI output text was not found.');\n}\n\nlet match = content.text;\n\n// JSON Schema may return an object or a JSON string\nif (typeof match === 'string') {\n  try {\n    match = JSON.parse(match);\n  } catch (error) {\n    throw new Error('OpenAI returned invalid JSON: ' + match);\n  }\n}\n\nif (!match || typeof match !== 'object') {\n  throw new Error('OpenAI did not return a valid match object.');\n}\n\nconst input = $('Prepare Match Input').first().json;\n\nconst required = match.required_skills || [];\nconst matchedRequired = match.matched_required_skills || [];\n\nconst preferred = match.preferred_skills || [];\nconst matchedPreferred = match.matched_preferred_skills || [];\n\nconst requiredScore = required.length > 0\n  ? (matchedRequired.length / required.length) * 60\n  : 60;\n\nconst preferredScore = preferred.length > 0\n  ? (matchedPreferred.length / preferred.length) * 20\n  : 20;\n\nconst experienceScore = {\n  Strong: 20,\n  Moderate: 12,\n  Weak: 5\n}[match.experience_match] || 0;\n\nconst matchScore = Math.round(\n  requiredScore + preferredScore + experienceScore\n);\n\nlet recommendation;\n\nif (matchScore >= 80) {\n  recommendation = 'Apply';\n} else if (matchScore >= 60) {\n  recommendation = 'Consider';\n} else {\n  recommendation = 'Skip';\n}\n\nconst matchedSkills = [\n  ...matchedRequired,\n  ...matchedPreferred\n];\n\nreturn [\n  {\n    json: {\n      resume_id: input.resume_id,\n      job_id: input.job_id,\n      match_score: matchScore,\n      matched_skills: JSON.stringify(matchedSkills),\n      missing_skills: JSON.stringify(match.missing_skills || []),\n      experience_match: match.experience_match,\n      recommendation\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        0
+      ],
+      "id": "4ecd53a2-6139-4e01-86d9-b88bfc96993f",
+      "name": "Parse Match Result"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO jobs (\n  company,\n  job_title,\n  job_url,\n  job_description\n)\nVALUES (\n  '{{ $('Webhook').first().json.body.company }}',\n  '{{ $('Webhook').first().json.body.job_title }}',\n  '{{ $('Webhook').first().json.body.job_url }}',\n  '{{ $('Webhook').first().json.body.job_description }}'\n)\nON CONFLICT (job_url)\nDO UPDATE SET\n  company = EXCLUDED.company,\n  job_title = EXCLUDED.job_title,\n  job_description = EXCLUDED.job_description\nRETURNING id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        32,
+        0
+      ],
+      "id": "bfd11045-ec3c-4e9d-8bc6-d75295566a3b",
+      "name": "Insert Job",
+      "credentials": {
+        "postgres": {
+          "id": "QPfdmSSZkX5YDimJ",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO resume_job_matches (\n  resume_id,\n  job_id,\n  match_score,\n  matched_skills,\n  missing_skills,\n  experience_match,\n  recommendation\n)\nVALUES (\n  {{ $json.resume_id }},\n  {{ $json.job_id }},\n  {{ $json.match_score }},\n  '{{ $json.matched_skills }}',\n  '{{ $json.missing_skills }}',\n  '{{ $json.experience_match }}',\n  '{{ $json.recommendation }}'\n)\nON CONFLICT (resume_id, job_id)\nDO UPDATE SET\n  match_score = EXCLUDED.match_score,\n  matched_skills = EXCLUDED.matched_skills,\n  missing_skills = EXCLUDED.missing_skills,\n  experience_match = EXCLUDED.experience_match,\n  recommendation = EXCLUDED.recommendation\nRETURNING id, resume_id, job_id, match_score, recommendation;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "fc42f812-620c-4bdb-a392-fe2899e18e83",
+      "name": "Insert Match",
+      "credentials": {
+        "postgres": {
+          "id": "QPfdmSSZkX5YDimJ",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Insert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse Match Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Prepare Match Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Match Input": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Match Result": {
+      "main": [
+        [
+          {
+            "node": "Insert Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Job": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "95605aa3-23a5-46e7-ab92-524986db9f58",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c060126ca28f723a1bd8e64341f6427bccd9ccf076096ad500a3fb9cb743f808"
+  },
+  "nodeGroups": [],
+  "id": "I9FvobaYiMXh7Sho",
+  "tags": []
+}
