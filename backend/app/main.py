@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 from app.routers.jobs import router as jobs_router
+from app.routers.resumes import router as resumes_router
 
 
 app = FastAPI()
@@ -12,3 +13,4 @@ def root():
 
 
 app.include_router(jobs_router)
+app.include_router(resumes_router)
