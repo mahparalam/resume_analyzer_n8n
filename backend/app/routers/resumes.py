@@ -7,6 +7,7 @@ from app.models.resume import Resume
 from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.resume import ResumeCreate, ResumeResponse, ResumeUpdate
 from app.services.resume_analyzer import analyze_resume
+from app.schemas.resume_analysis import ResumeAnalysisResponse
 
 router = APIRouter(prefix="/api/resumes")
 
@@ -172,3 +173,31 @@ def analyze_resume_endpoint(
         "resume_id": resume.id,
         "analysis": analysis
     }
+
+@router.get("/{resume_id}/analysis", response_model=ResumeAnalysisResponse)
+def get_resume_analysis(
+    resume_id: int,
+    db: Session = Depends(get_db)
+):
+    resume = db.get(Resume, resume_id)
+
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found"
+        )
+
+    analysis = (
+        db.query(ResumeAnalysis)
+        .filter(ResumeAnalysis.resume_id == resume_id)
+        .order_by(ResumeAnalysis.id.desc())
+        .first()
+    )
+
+    if analysis is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume analysis not found"
+        )
+
+    return analysis
