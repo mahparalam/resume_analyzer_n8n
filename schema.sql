@@ -38,3 +38,14 @@ CREATE TABLE IF NOT EXISTS resume_job_matches (
 
     CONSTRAINT resume_job_matches_unique UNIQUE (resume_id, job_id)
 );
+
+CREATE TABLE IF NOT EXISTS resume_analyses (
+    id SERIAL PRIMARY KEY,
+    resume_id INTEGER NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+    summary TEXT,
+    skills JSONB,
+    experience JSONB,
+    education JSONB,
+    projects JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

@@ -1,10 +1,12 @@
+import re
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from app.database import get_db
 from app.models.resume import Resume
+from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.resume import ResumeCreate, ResumeResponse, ResumeUpdate
-
+from app.services.resume_analyzer import analyze_resume
 
 router = APIRouter(prefix="/api/resumes")
 
@@ -87,3 +89,86 @@ def delete_resume(
     db.commit()
 
     return {"message": "Resume deleted successfully"}
+
+@router.post("/upload", response_model=ResumeResponse, status_code=201)
+async def upload_resume(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are allowed"
+        )
+
+    contents = await file.read()
+
+    from io import BytesIO
+    from pypdf import PdfReader
+
+    pdf = PdfReader(BytesIO(contents))
+
+    text = ""
+
+    for page in pdf.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
+
+    new_resume = Resume(
+        name=name,
+        email=email,
+        resume_text=text
+    )
+
+    db.add(new_resume)
+    db.commit()
+    db.refresh(new_resume)
+
+    return new_resume
+
+@router.post("/{resume_id}/analyze")
+def analyze_resume_endpoint(
+    resume_id: int,
+    db: Session = Depends(get_db)
+):
+    resume = db.get(Resume, resume_id)
+
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found"
+        )
+
+    # Send resume text to the LLM
+    analysis = analyze_resume(resume.resume_text)
+
+    # Save the AI analysis to PostgreSQL
+    new_analysis = ResumeAnalysis(
+        resume_id=resume.id,
+        summary=analysis.summary,
+        skills=analysis.skills,
+        experience=[
+            item.model_dump()
+            for item in analysis.experience
+        ],
+        education=[
+            item.model_dump()
+            for item in analysis.education
+        ],
+        projects=[
+            item.model_dump()
+            for item in analysis.projects
+        ],
+    )
+
+    db.add(new_analysis)
+    db.commit()
+    db.refresh(new_analysis)
+
+    return {
+        "resume_id": resume.id,
+        "analysis": analysis
+    }
