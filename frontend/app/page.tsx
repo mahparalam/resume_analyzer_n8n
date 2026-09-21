@@ -1,6 +1,39 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import ResumeCard from "@/components/ResumeCard";
 
+type Resume = {
+  id: number;
+  name: string | null;
+  email: string | null;
+  resume_text: string | null;
+};
+
 export default function Home() {
+  const [resumes, setResumes] = useState<Resume[]>([]);
+
+  useEffect(() => {
+  const fetchResumes = async () => {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/resumes/"
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch resumes");
+      }
+
+      const data = await response.json();
+
+      setResumes(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  fetchResumes();
+}, []);
   return (
     <main className="min-h-screen bg-gray-50 px-8 py-10">
       <div className="mx-auto max-w-6xl">
@@ -27,10 +60,14 @@ export default function Home() {
             </button>
           </div>
 
+          {resumes.map((resume) => (
           <ResumeCard
-            name="Mahpara Yasmin"
-            role="AI Engineer"
+            key={resume.id}
+            resumeId={resume.id}
+            name={resume.name ?? "Unnamed Resume"}
+            email={resume.email ?? ""}
           />
+        ))}
         </section>
 
       </div>
