@@ -8,6 +8,10 @@ from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.resume import ResumeCreate, ResumeResponse, ResumeUpdate
 from app.services.resume_analyzer import analyze_resume
 from app.schemas.resume_analysis import ResumeAnalysisResponse
+from pathlib import Path
+from io import BytesIO
+from pypdf import PdfReader
+from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/api/resumes")
 
@@ -101,23 +105,23 @@ async def upload_resume(
     if file.content_type != "application/pdf":
         raise HTTPException(
             status_code=400,
-            detail="Only PDF files are allowed"
+            detail="Only PDF files are allowed",
         )
 
     contents = await file.read()
 
-    from io import BytesIO
-    from pypdf import PdfReader
-
+    # Extract text from PDF
     pdf = PdfReader(BytesIO(contents))
 
     text = ""
 
     for page in pdf.pages:
         page_text = page.extract_text()
+
         if page_text:
             text += page_text + "\n"
 
+    # Create database record first
     new_resume = Resume(
         name=name,
         email=email,
@@ -125,6 +129,20 @@ async def upload_resume(
     )
 
     db.add(new_resume)
+    db.commit()
+    db.refresh(new_resume)
+
+    # Save original PDF using the database ID
+    resume_dir = Path("../files/resumes")
+    resume_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = resume_dir / f"{new_resume.id}.pdf"
+
+    file_path.write_bytes(contents)
+
+    # Save the file path in the database
+    new_resume.file_path = str(file_path)
+
     db.commit()
     db.refresh(new_resume)
 
@@ -201,3 +219,36 @@ def get_resume_analysis(
         )
 
     return analysis
+
+@router.get("/{resume_id}/file")
+def get_resume_file(
+    resume_id: int,
+    db: Session = Depends(get_db),
+):
+    resume = db.get(Resume, resume_id)
+
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found",
+        )
+
+    if not resume.file_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Original resume file not found",
+        )
+
+    file_path = Path(resume.file_path)
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Original resume file not found",
+        )
+
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=f"resume-{resume_id}.pdf",
+    )
