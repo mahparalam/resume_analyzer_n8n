@@ -49,3 +49,16 @@ CREATE TABLE IF NOT EXISTS resume_analyses (
     projects JSONB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS job_requirements (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+
+    required_skills JSONB,
+    preferred_skills JSONB,
+    experience_years INTEGER,
+    education JSONB,
+    responsibilities JSONB,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
