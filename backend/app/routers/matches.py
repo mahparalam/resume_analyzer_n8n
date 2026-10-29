@@ -76,12 +76,15 @@ def create_match(
 
     # Run matching engine
     result = calculate_match(
-        resume_skills=resume_analysis.skills or [],
-        resume_experience=resume_analysis.experience or [],
-        required_skills=job_requirements.required_skills or [],
-        preferred_skills=job_requirements.preferred_skills or [],
-        required_years=job_requirements.experience_years,
-    )
+    db=db,
+    resume_id=match_data.resume_id,
+    job_id=match_data.job_id,
+    resume_skills=resume_analysis.skills or [],
+    resume_experience=resume_analysis.experience or [],
+    required_skills=job_requirements.required_skills or [],
+    preferred_skills=job_requirements.preferred_skills or [],
+    required_years=job_requirements.experience_years,
+)
 
     # Check whether match already exists
     existing_match = (

@@ -1,5 +1,16 @@
+from sqlalchemy import text
+import re
+
 def normalize_skill(skill: str) -> str:
-    return skill.strip().lower()
+    skill = skill.strip().lower()
+
+    # Remove punctuation
+    skill = re.sub(r"[^\w\s]", " ", skill)
+
+    # Normalize whitespace
+    skill = re.sub(r"\s+", " ", skill).strip()
+
+    return skill
 
 
 def calculate_skill_match(
@@ -38,17 +49,17 @@ def calculate_skill_match(
         required_score = (
             len(matched_required)
             / len(required_skill_set)
-        ) * 60
+        ) * 30
     else:
-        required_score = 60
+        required_score = 30
 
     if preferred_skill_set:
         preferred_score = (
             len(matched_preferred)
             / len(preferred_skill_set)
-        ) * 20
+        ) * 10
     else:
-        preferred_score = 20
+        preferred_score = 10
 
     return {
         "required_score": required_score,
@@ -63,7 +74,7 @@ def calculate_experience_match(
     required_years: int | None,
 ):
     if required_years is None:
-        return 20, "Not specified"
+        return 10, "Not specified"
 
     total_years = 0
 
@@ -98,6 +109,9 @@ def calculate_experience_match(
     return 5, "Weak"
 
 def calculate_match(
+    db,
+    resume_id: int,
+    job_id: int,
     resume_skills: list[str],
     resume_experience: list,
     required_skills: list[str],
@@ -117,11 +131,19 @@ def calculate_match(
         )
     )
 
-    final_score = round(
-        skill_result["required_score"]
-        + skill_result["preferred_score"]
-        + experience_score
+    semantic_similarity = calculate_semantic_similarity(
+        db,
+        resume_id,
+        job_id,
     )
+    semantic_score = semantic_similarity * 40
+
+    final_score = round(
+    skill_result["required_score"]
+    + skill_result["preferred_score"]
+    + semantic_score
+    + experience_score
+)
 
     matched_skills = (
         skill_result["matched_required"]
@@ -138,9 +160,41 @@ def calculate_match(
         recommendation = "SKIP"
 
     return {
-        "match_score": final_score,
-        "matched_skills": matched_skills,
-        "missing_skills": missing_skills,
-        "experience_match": experience_match,
-        "recommendation": recommendation,
-    }
+    "match_score": final_score,
+    "matched_skills": matched_skills,
+    "missing_skills": missing_skills,
+    "experience_match": experience_match,
+    "semantic_similarity": semantic_similarity,
+    "semantic_score": semantic_score,
+    "recommendation": recommendation,
+}
+
+def calculate_semantic_similarity(
+    db,
+    resume_id: int,
+    job_id: int,
+) -> float:
+    result = db.execute(
+        text(
+            """
+            SELECT 1 - (resume.embedding <=> job.embedding) AS similarity
+            FROM embeddings AS resume
+            CROSS JOIN embeddings AS job
+            WHERE resume.entity_type = 'resume'
+              AND resume.entity_id = :resume_id
+              AND job.entity_type = 'job'
+              AND job.entity_id = :job_id
+            """
+        ),
+        {
+            "resume_id": resume_id,
+            "job_id": job_id,
+        },
+    )
+
+    similarity = result.scalar()
+
+    if similarity is None:
+        raise ValueError("Resume or job embedding not found")
+
+    return float(similarity)
