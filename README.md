@@ -342,11 +342,17 @@ Import into n8n:
 
 ### 7. Create Database Tables
 
-If the database tables do not already exist, run:
+The application tables live in their own database (`APP_DB`, default `resume_app`), separate from n8n's internal database. On first start, Docker Compose creates that database automatically. Create or update the tables with Alembic:
 
 ```bash
-docker exec -i n8n-postgres psql -U n8n -d n8n < schema.sql
+python -m venv .venv && source .venv/bin/activate
+pip install -r backend/app/requirements.txt
+cd backend && alembic upgrade head
 ```
+
+[`schema.sql`](./schema.sql) is generated from the migrations for reference.
+
+In n8n, the PostgreSQL credential used by the workflows must point to the `APP_DB` database (not `n8n`).
 
 ### Example Webhook Request
 

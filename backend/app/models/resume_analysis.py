@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,5 +25,6 @@ class ResumeAnalysis(Base):
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime,
-        nullable=True
+        nullable=True,
+        server_default=text("CURRENT_TIMESTAMP")
     )
