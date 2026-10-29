@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -42,11 +42,13 @@ class Embedding(Base):
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime,
-        default=datetime.utcnow
+        default=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP")
     )
 
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime,
         default=datetime.utcnow,
-        onupdate=datetime.utcnow
+        onupdate=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP")
     )
