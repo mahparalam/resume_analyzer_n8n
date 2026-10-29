@@ -1,8 +1,12 @@
-cat > .gitignore <<'EOF'
 # Environment / secrets
 .env
 .env.*
 !.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
 
 # Resume / personal files
 files/
@@ -21,4 +25,8 @@ n8n_data/
 Thumbs.db
 .vscode/
 .idea/
-EOF
+
+# Local notes / agent files
+CLAUDE.md
+PLAN.md
+AGENTS.md
