@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -9,6 +9,9 @@ from app.models.base import Base
 
 class Embedding(Base):
     __tablename__ = "embeddings"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 

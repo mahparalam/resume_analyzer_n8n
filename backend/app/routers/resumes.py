@@ -7,6 +7,7 @@ from app.models.resume import Resume
 from app.models.resume_analysis import ResumeAnalysis
 from app.schemas.resume import ResumeCreate, ResumeResponse, ResumeUpdate
 from app.services.resume_analyzer import analyze_resume
+from app.services.embedding_service import ensure_resume_embedding
 from app.schemas.resume_analysis import ResumeAnalysisResponse
 from pathlib import Path
 from io import BytesIO
@@ -186,6 +187,9 @@ def analyze_resume_endpoint(
     db.add(new_analysis)
     db.commit()
     db.refresh(new_analysis)
+
+    # Embed the analysis for semantic matching
+    ensure_resume_embedding(db, new_analysis)
 
     return {
         "resume_id": resume.id,
