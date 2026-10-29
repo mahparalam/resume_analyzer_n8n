@@ -6,6 +6,7 @@ from app.models.job import Job
 from app.schemas.job import JobCreate, JobResponse, JobUpdate
 from app.models.job_requirement import JobRequirement
 from app.services.job_analyzer import analyze_job
+from app.services.embedding_service import ensure_job_embedding
 
 router = APIRouter(prefix="/api/jobs")
 
@@ -130,7 +131,10 @@ def analyze_job_endpoint(
     db.commit()
     db.refresh(requirements)
 
-    # 5. Return the result
+    # 5. Embed the requirements for semantic matching
+    ensure_job_embedding(db, job, requirements)
+
+    # 6. Return the result
     return {
         "job_id": job.id,
         "requirements": analysis,

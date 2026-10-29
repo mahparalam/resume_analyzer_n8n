@@ -11,6 +11,10 @@ from app.models.resume_analysis import ResumeAnalysis
 from app.models.resume_job_match import ResumeJobMatch
 from app.schemas.match import MatchRequest
 from app.services.match_engine import calculate_match
+from app.services.embedding_service import (
+    ensure_job_embedding,
+    ensure_resume_embedding,
+)
 
 
 router = APIRouter(
@@ -72,6 +76,17 @@ def create_match(
         raise HTTPException(
             status_code=404,
             detail="Job requirements not found. Analyze the job first.",
+        )
+
+    # Create embeddings that are missing or out of date
+    # (e.g. resumes/jobs analyzed before embeddings existed)
+    try:
+        ensure_resume_embedding(db, resume_analysis)
+        ensure_job_embedding(db, job, job_requirements)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
         )
 
     # Run matching engine

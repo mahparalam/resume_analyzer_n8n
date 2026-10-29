@@ -6,6 +6,13 @@ from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from app.models.embedding import Embedding
+from app.models.job import Job
+from app.models.job_requirement import JobRequirement
+from app.models.resume_analysis import ResumeAnalysis
+from app.services.embedding_text import (
+    build_job_embedding_text,
+    build_resume_embedding_text,
+)
 
 load_dotenv()
 
@@ -68,3 +75,49 @@ def get_or_create_embedding(
     db.refresh(existing)
 
     return existing
+
+
+def ensure_resume_embedding(
+    db: Session,
+    analysis: ResumeAnalysis,
+) -> Embedding:
+    text = build_resume_embedding_text(
+        summary=analysis.summary,
+        skills=analysis.skills,
+        experience=analysis.experience,
+        projects=analysis.projects,
+    )
+
+    if not text:
+        raise ValueError("Resume analysis has no content to embed")
+
+    return get_or_create_embedding(
+        db,
+        entity_type="resume",
+        entity_id=analysis.resume_id,
+        text=text,
+    )
+
+
+def ensure_job_embedding(
+    db: Session,
+    job: Job,
+    requirements: JobRequirement,
+) -> Embedding:
+    text = build_job_embedding_text(
+        job_title=job.job_title,
+        required_skills=requirements.required_skills,
+        preferred_skills=requirements.preferred_skills,
+        experience_years=requirements.experience_years,
+        responsibilities=requirements.responsibilities,
+    )
+
+    if not text:
+        raise ValueError("Job requirements have no content to embed")
+
+    return get_or_create_embedding(
+        db,
+        entity_type="job",
+        entity_id=job.id,
+        text=text,
+    )
