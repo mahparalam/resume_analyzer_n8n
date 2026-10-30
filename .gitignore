@@ -26,7 +26,5 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Local notes / agent files
-CLAUDE.md
+# Local notes
 PLAN.md
-AGENTS.md

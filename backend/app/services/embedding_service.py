@@ -1,10 +1,9 @@
 import hashlib
-import os
 
-from dotenv import load_dotenv
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.embedding import Embedding
 from app.models.job import Job
 from app.models.job_requirement import JobRequirement
@@ -14,11 +13,9 @@ from app.services.embedding_text import (
     build_resume_embedding_text,
 )
 
-load_dotenv()
+client = OpenAI(api_key=settings.openai_api_key)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL = settings.embedding_model
 
 
 def create_content_hash(text: str) -> str:

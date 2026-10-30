@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiUrl } from "@/lib/api";
 
 type Resume = {
   id: number;
@@ -61,7 +62,7 @@ export default function ResumePage({
         setResumeId(id);
 
         const resumeResponse = await fetch(
-          `http://127.0.0.1:8000/api/resumes/${id}`
+          apiUrl(`/api/resumes/${id}`)
         );
 
         if (!resumeResponse.ok) {
@@ -72,7 +73,7 @@ export default function ResumePage({
         setResume(resumeData);
 
         const analysisResponse = await fetch(
-          `http://127.0.0.1:8000/api/resumes/${id}/analysis`
+          apiUrl(`/api/resumes/${id}/analysis`)
         );
 
         if (analysisResponse.ok) {
@@ -100,7 +101,7 @@ export default function ResumePage({
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/resumes/${resumeId}/analyze`,
+        apiUrl(`/api/resumes/${resumeId}/analyze`),
         {
           method: "POST",
         }
@@ -179,7 +180,7 @@ export default function ResumePage({
             )}
 
             <a
-              href={`http://127.0.0.1:8000/api/resumes/${resumeId}/file`}
+              href={apiUrl(`/api/resumes/${resumeId}/file`)}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 inline-block rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"

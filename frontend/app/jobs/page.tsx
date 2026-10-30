@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import JobCard from "@/components/JobCard";
+import { apiUrl } from "@/lib/api";
 
 type Job = {
   id: number;
@@ -23,7 +24,7 @@ export default function JobsPage() {
     const fetchJobs = async () => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/api/jobs/"
+          apiUrl("/api/jobs/")
         );
 
         if (!response.ok) {

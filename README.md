@@ -1,362 +1,233 @@
-# AI Resume Analyzer v1
+# Resume-to-Job Intelligence Engine
 
-An AI-powered resume-to-job matching system built with **n8n, PostgreSQL, Docker, and OpenAI**.
+An AI-powered engine that matches resumes to job openings. It reads a PDF resume and a job description, extracts structured evidence from both with an LLM, and calculates an explainable match score with an **APPLY / CONSIDER / SKIP** recommendation.
 
-The system ingests a PDF resume, extracts and stores the candidate's information, receives job descriptions through a webhook, analyzes the candidate's fit against the job requirements, calculates a deterministic match score, and stores the final recommendation.
+Built with **FastAPI, PostgreSQL + pgvector, OpenAI, Next.js and Docker**. The original n8n workflows (v1) are still included.
 
-## Overview
+## Core Idea
 
-The Resume Analyzer combines **LLM-based evidence extraction** with **deterministic scoring**.
+The LLM never decides whether a candidate is a good fit. It only **extracts evidence**: skills, experience, education, projects, and the job's required and preferred skills. The **score is calculated by deterministic code** from that evidence, so results are consistent, explainable and easy to tune without changing prompts.
 
-Instead of asking the LLM to directly decide whether a candidate is a good match, the LLM extracts structured evidence from the resume and job description. The final score is then calculated using predefined rules — this makes the scoring process more consistent, explainable, and reproducible.
+## Current Status
+
+| Area | Status |
+|---|---|
+| Resume upload (PDF → text, original file stored) | Done |
+| AI resume analysis (summary, skills, experience, education, projects) | Done |
+| Job management and AI job analysis (required/preferred skills, years, education, responsibilities) | Done |
+| Semantic similarity with OpenAI embeddings stored in pgvector | Done |
+| Deterministic match scoring and recommendation | Done |
+| Database migrations (Alembic) and a dedicated application database | Done |
+| Central configuration through environment variables | Done |
+| Web UI: resumes (list, upload, view, analyze) and jobs (list, add, view) | Done |
+| Web UI for job analysis and matching | Not yet (available through the API) |
+| Automated tests | Not yet |
+| v1 n8n workflows | Included; their future role is under review |
 
 ## Architecture
 
 ```text
-                    RESUME INGESTION
-
-Resume PDF
-    │
-    ▼
-Read File
-    │
-    ▼
-Extract PDF Text
-    │
-    ▼
-LLM Candidate Information Extraction
-    │
-    ▼
-PostgreSQL (resumes table)
-
-
-                    JOB MATCHING
-
-Job Webhook
-    │
-    ▼
-Job Upsert
-    │
-    ▼
-Retrieve Resume
-    │
-    ▼
-Prepare Match Input
-    │
-    ▼
-LLM Requirement & Evidence Extraction
-    │
-    ▼
-Deterministic Match Scoring
-    │
-    ▼
-Apply / Consider / Skip
-    │
-    ▼
-Match Upsert → PostgreSQL
+              Next.js frontend (localhost:3000)
+                          │  REST
+                          ▼
+               FastAPI backend (localhost:8000)
+     ┌────────────┬───────┴──────┬─────────────────┐
+     ▼            ▼              ▼                 ▼
+ Resume PDF   OpenAI LLM     OpenAI embeddings   Match engine
+ (pypdf)      structured     text-embedding-     (deterministic
+              extraction     3-small             scoring)
+     │            │              │                 │
+     └────────────┴──────┬───────┴─────────────────┘
+                         ▼
+         PostgreSQL 16 + pgvector  (database: resume_app)
 ```
 
-## Tech Stack
+### Matching Pipeline
 
-| Layer | Tool |
-|---|---|
-| Workflow automation & orchestration | n8n |
-| Persistent data storage | PostgreSQL |
-| Local infrastructure | Docker / Docker Compose |
-| LLM extraction & matching analysis | OpenAI API |
-| Custom logic | JavaScript (n8n Code nodes) |
-| Data operations | SQL |
-| Job ingestion | REST Webhook |
+Each step is a separate API call:
 
-## Features
+1. **Upload a resume** (`POST /api/resumes/upload`). Text is extracted with pypdf, and the original PDF is saved under `files/resumes/`.
+2. **Analyze the resume** (`POST /api/resumes/{id}/analyze`). The LLM returns structured data (summary, skills, experience, education, projects), validated against a Pydantic schema. An embedding of the analysis is stored.
+3. **Add and analyze a job** (`POST /api/jobs/`, then `POST /api/jobs/{id}/analyze`). The LLM extracts required and preferred skills, years of experience, education and responsibilities. An embedding is stored.
+4. **Match** (`POST /api/matches/` with `{"resume_id": …, "job_id": …}`). Missing or outdated embeddings are created automatically, the score is calculated, and the result is saved. Re-running a match updates the existing result.
 
-**Resume Processing**
-- PDF resume ingestion and text extraction
-- AI-based candidate name and email extraction
-- Resume text persistence in PostgreSQL
-
-**Job Processing**
-- Job ingestion through an n8n webhook
-- Dynamic resume selection using `resume_id`
-- Job deduplication using `job_url` — existing jobs are updated instead of duplicated
-
-**AI Matching**
-
-The LLM extracts:
-- Required skills
-- Preferred skills
-- Matched required skills
-- Matched preferred skills
-- Missing skills
-- Experience match
-
-**Deterministic Scoring**
-- The final match score is calculated outside the LLM using fixed scoring rules
-
-**Match Persistence**
-- Resume/job matching results are stored in PostgreSQL
-- Duplicate resume/job matches are prevented
-- Re-running an analysis updates the existing match
+Embeddings are cached with a content hash, so unchanged resumes and jobs are never re-embedded.
 
 ## Matching Logic
 
-### Score Calculation
+The score is out of 100:
 
-The total score is based on three weighted components:
+| Component | Points | How it's calculated |
+|---|---|---|
+| Required skills | 30 | Share of the job's required skills found in the resume |
+| Preferred skills | 10 | Share of the job's preferred skills found in the resume |
+| Semantic similarity | 40 | Cosine similarity between the resume and job embeddings × 40 |
+| Experience | 20 | Resume years compared with the job's required years (below) |
 
-| Component | Weight |
-|---|---|
-| Required Skills | 60% |
-| Preferred Skills | 20% |
-| Experience | 20% |
-| **Total** | **100%** |
+Skills are compared after normalization (lowercase, punctuation and extra spaces removed).
 
-### Experience Scoring
-
-| Experience Match | Score |
-|---|---|
-| Strong | 20 |
-| Moderate | 12 |
-| Weak | 5 |
-
-### Recommendation Thresholds
+| Experience match | Condition | Points |
+|---|---|---|
+| Strong | ≥ required years | 20 |
+| Good | ≥ 70% of required years | 15 |
+| Partial | ≥ 50% of required years | 10 |
+| Weak | below 50% | 5 |
+| Not specified | the job states no required years | 10 |
 
 | Score | Recommendation |
 |---|---|
-| 80–100 | Apply |
-| 60–79 | Consider |
-| 0–59 | Skip |
+| 80–100 | APPLY |
+| 60–79 | CONSIDER |
+| 0–59 | SKIP |
 
-## How It Works
+Each match result also lists the matched and missing skills, the experience match and the raw semantic similarity, so every score can be explained.
 
-### 1. Resume Ingestion
+## API
 
-The Resume Analyzer workflow reads a PDF resume and extracts its text. The extracted text is passed to an LLM to identify the candidate's name and email. The resume information and complete resume text are then stored in PostgreSQL.
+Interactive documentation is available at [http://localhost:8000/docs](http://localhost:8000/docs) while the backend is running.
 
-### 2. Job Ingestion
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/api/resumes/upload` | Upload a PDF resume (`file`, `name`, `email`) |
+| `GET` | `/api/resumes/` · `/api/resumes/{id}` | List or get resumes |
+| `PUT` · `DELETE` | `/api/resumes/{id}` | Update or delete a resume |
+| `POST` | `/api/resumes/{id}/analyze` | Run AI analysis on a resume |
+| `GET` | `/api/resumes/{id}/analysis` | Latest analysis for a resume |
+| `GET` | `/api/resumes/{id}/file` | Download the original PDF |
+| `POST` | `/api/jobs/` | Create a job |
+| `GET` | `/api/jobs/` · `/api/jobs/{id}` | List or get jobs |
+| `PUT` · `DELETE` | `/api/jobs/{id}` | Update or delete a job |
+| `POST` | `/api/jobs/{id}/analyze` | Run AI analysis on a job description |
+| `GET` | `/api/jobs/{id}/requirements` | Extracted job requirements |
+| `POST` | `/api/matches/` | Score a resume against a job |
 
-The Job Workflow receives job information through an n8n webhook.
+## Tech Stack
 
-Example request:
-
-```json
-{
-  "resume_id": 1,
-  "company": "Example Company",
-  "job_title": "AI Engineer",
-  "job_url": "https://example.com/job/123",
-  "job_description": "Looking for an AI Engineer with Python, LLM, RAG and Docker experience."
-}
-```
-
-### 3. Job Upsert
-
-Jobs are stored using an upsert based on `job_url`:
-
-```sql
-ON CONFLICT (job_url)
-DO UPDATE
-```
-
-Submitting the same job again does not create another job record — the existing job ID is reused.
-
-### 4. Resume Retrieval
-
-The workflow uses the `resume_id` supplied by the webhook to retrieve the appropriate resume:
-
-```sql
-SELECT id, name, email, resume_text
-FROM resumes
-WHERE id = ...;
-```
-
-This allows the same workflow to analyze different resumes dynamically.
-
-### 5. LLM Requirement Analysis
-
-The LLM compares the resume against the job description and extracts structured evidence. It does not directly determine the final match score — it identifies which requirements are supported by evidence in the resume.
-
-### 6. Deterministic Match Scoring
-
-The workflow calculates the final score using predefined rules:
-
-```
-Required Skills   → 60%
-Preferred Skills  → 20%
-Experience        → 20%
-```
-
-This separates AI reasoning / evidence extraction from business logic / scoring, making the final recommendation more predictable and easier to modify.
-
-### 7. Match Upsert
-
-The final result is stored in `resume_job_matches`. The database enforces uniqueness on `(resume_id, job_id)`, so analyzing the same resume against the same job again updates the existing match instead of creating a duplicate.
+| Layer | Tools |
+|---|---|
+| Backend API | FastAPI, Pydantic, pydantic-settings |
+| Database | PostgreSQL 16, pgvector, SQLAlchemy 2.0, Alembic |
+| AI | OpenAI structured outputs (`gpt-5.6-luna` by default), `text-embedding-3-small` embeddings |
+| Documents | pypdf |
+| Frontend | Next.js 16 (App Router), React 19, Tailwind CSS 4, TypeScript |
+| Infrastructure | Docker Compose |
+| Workflow automation (v1) | n8n |
 
 ## Database
 
-The project uses three PostgreSQL tables.
+All application tables live in their own database, `resume_app` (set with `APP_DB`), separate from n8n's internal database. The schema is managed with Alembic; [`schema.sql`](./schema.sql) is generated from the migrations for reference.
 
-### `resumes`
-
-Stores candidate information and extracted resume text.
-
-| Field | Description |
+| Table | Contents |
 |---|---|
-| `id` | Primary key |
-| `name` | Candidate name |
-| `email` | Candidate email |
-| `resume_text` | Full extracted resume text |
-| `created_at` | Timestamp |
-
-### `jobs`
-
-Stores job information. Enforces `UNIQUE(job_url)` to prevent duplicate jobs.
-
-| Field | Description |
-|---|---|
-| `id` | Primary key |
-| `company` | Company name |
-| `job_title` | Job title |
-| `job_url` | Job posting URL |
-| `job_description` | Full job description |
-| `created_at` | Timestamp |
-
-### `resume_job_matches`
-
-Stores the result of matching a resume against a job. Enforces `UNIQUE(resume_id, job_id)` to prevent duplicate matches. Foreign keys connect match records to the corresponding resume and job.
-
-| Field | Description |
-|---|---|
-| `id` | Primary key |
-| `resume_id` | FK → `resumes.id` |
-| `job_id` | FK → `jobs.id` |
-| `match_score` | Final calculated score |
-| `matched_skills` | Skills matched |
-| `missing_skills` | Skills missing |
-| `experience_match` | Strong / Moderate / Weak |
-| `recommendation` | Apply / Consider / Skip |
-| `created_at` | Timestamp |
-
-The complete schema, including constraints, is available in [`schema.sql`](./schema.sql).
-
-## n8n Workflows
-
-### Resume Analyzer
-
-Responsible for resume ingestion and storage.
-
-```
-Manual Trigger → Read File → Extract PDF → Prepare Resume → OpenAI → Parse Resume Data → PostgreSQL
-```
-
-### Job Workflow
-
-Responsible for job matching.
-
-```
-Webhook → Insert/Upsert Job → Get Resume → Prepare Match Input → OpenAI Matcher
-        → Parse Match Result → Deterministic Scoring → Insert/Upsert Match
-```
-
-## Testing
-
-The matching pipeline was tested against different job profiles:
-
-| Job Profile | Match Score | Recommendation |
-|---|---|---|
-| AI Engineer | 100 | Apply |
-| AI Engineer with Kubernetes/AWS requirements | 62 | Consider |
-| Senior Unity Game Developer | 5 | Skip |
-
-These tests demonstrate that the scoring system can distinguish between strong, partial, and weak matches.
-
-### Duplicate Prevention Testing
-
-The same job was submitted multiple times, and the same resume/job combination was analyzed multiple times. In both cases the system correctly reused the existing record instead of creating duplicates.
-
-Verified database state:
-
-```
-Same job URL              → 1 job record
-Same resume + same job    → 1 match record
-```
+| `resumes` | Candidate name, email, extracted text, path of the stored PDF |
+| `resume_analyses` | AI analysis of a resume (summary, skills, experience, education, projects as JSONB) |
+| `jobs` | Company, title, URL (unique), description |
+| `job_requirements` | AI-extracted requirements of a job (JSONB) |
+| `resume_job_matches` | Score, matched/missing skills, experience match and recommendation; unique per resume and job |
+| `embeddings` | One vector per resume or job, with a content hash for caching |
+| `skill_embeddings` | One vector per normalized skill, for semantic skill matching |
 
 ## Running Locally
 
 ### Prerequisites
 
-- Docker
-- Docker Compose
-- n8n
-- PostgreSQL (provided through Docker Compose)
-- An OpenAI API credential configured in n8n
+- Docker and Docker Compose
+- Python 3.12+
+- Node.js 20+
+- An OpenAI API key
 
-### 1. Clone the Repository
+### 1. Clone and configure
 
 ```bash
 git clone https://github.com/mahparalam/resume_analyzer_n8n.git
 cd resume_analyzer_n8n
-```
-
-### 2. Configure Environment Variables
-
-Create `.env` from `.env.example`:
-
-```bash
 cp .env.example .env
 ```
 
-Edit `.env` and provide your own PostgreSQL password. **Never commit `.env` to Git.**
+Edit `.env` and set at least `POSTGRES_PASSWORD` and `OPENAI_API_KEY`. **Never commit `.env`.**
 
-### 3. Start Docker Services
+### 2. Start PostgreSQL (and n8n)
 
 ```bash
 docker compose up -d
 ```
 
-Check running containers:
+On the first start, the `resume_app` database is created automatically.
+
+### 3. Set up the backend
 
 ```bash
-docker ps
-```
-
-### 4. Open n8n
-
-Navigate to [http://localhost:5678](http://localhost:5678).
-
-### 5. Configure Credentials
-
-Create/configure the required credentials in n8n:
-
-- PostgreSQL
-- OpenAI
-
-The exported workflows contain credential references, but credentials themselves are not included in the repository.
-
-### 6. Import the Workflows
-
-Import into n8n:
-
-- `Resume_Analyzer.json`
-- `Job_workflow.json`
-
-### 7. Create Database Tables
-
-The application tables live in their own database (`APP_DB`, default `resume_app`), separate from n8n's internal database. On first start, Docker Compose creates that database automatically. Create or update the tables with Alembic:
-
-```bash
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r backend/app/requirements.txt
-cd backend && alembic upgrade head
+
+cd backend
+alembic upgrade head                  # create or update the tables
+uvicorn app.main:app --reload         # http://127.0.0.1:8000
 ```
 
-[`schema.sql`](./schema.sql) is generated from the migrations for reference.
+### 4. Start the frontend
 
-In n8n, the PostgreSQL credential used by the workflows must point to the `APP_DB` database (not `n8n`).
+```bash
+cd frontend
+npm install
+npm run dev                           # http://localhost:3000
+```
 
-### Example Webhook Request
+To use a different backend URL, copy `frontend/.env.example` to `frontend/.env.local` and set `NEXT_PUBLIC_API_URL`.
 
-Once the Job Workflow is running in n8n test mode:
+### Configuration
+
+All backend settings are read from environment variables or the repo-root `.env`. Optional settings and their defaults are listed in [`.env.example`](./.env.example).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | — | Database credentials |
+| `APP_DB` | `resume_app` | Application database name |
+| `POSTGRES_HOST` / `POSTGRES_PORT` | `localhost` / `5432` | Database location |
+| `DATABASE_URL` | — | Full connection URL; overrides the settings above |
+| `OPENAI_API_KEY` | — | OpenAI API key |
+| `OPENAI_MODEL` | `gpt-5.6-luna` | Model used for resume and job analysis |
+| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `FILES_DIR` | `files` | Where uploaded PDFs are stored (relative to the repo root) |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated origins allowed to call the API |
+
+## Project Structure
+
+```text
+resume_analyzer_n8n/
+├── backend/
+│   ├── alembic.ini
+│   ├── migrations/            # Alembic migrations
+│   └── app/
+│       ├── main.py            # FastAPI app
+│       ├── config.py          # settings from environment variables
+│       ├── database.py
+│       ├── models/            # SQLAlchemy models
+│       ├── schemas/           # Pydantic request/response and LLM output schemas
+│       ├── routers/           # /api/resumes, /api/jobs, /api/matches
+│       └── services/          # LLM analysis, embeddings, match engine
+├── frontend/                  # Next.js app (app/, components/, lib/api.ts)
+├── db/init/                   # creates the application database on first start
+├── compose.yaml               # PostgreSQL + pgvector, n8n
+├── schema.sql                 # generated from the migrations
+├── Resume_Analyzer.json       # v1 n8n workflow
+├── Job_workflow.json          # v1 n8n workflow
+└── .env.example
+```
+
+Uploaded resumes (`files/`), `.env` and other local files are excluded through `.gitignore`.
+
+## v1: n8n Workflows
+
+The first version of the project ran entirely in n8n. The workflows are still included, and their future role is under review.
+
+- **Resume Analyzer** (`Resume_Analyzer.json`): Manual Trigger → Read File → Extract PDF → OpenAI → Parse → insert into `resumes`
+- **Job Workflow** (`Job_workflow.json`): Webhook → Upsert Job → Get Resume → OpenAI Matcher → Deterministic Scoring → Upsert Match
+
+v1 uses its own scoring (60% required skills, 20% preferred skills, 20% experience) and the same Apply / Consider / Skip thresholds.
+
+To use them, open n8n at [http://localhost:5678](http://localhost:5678), create PostgreSQL and OpenAI credentials, and import both JSON files. Point the PostgreSQL credential at the application database (`resume_app`). Example request once the Job Workflow is active in test mode:
 
 ```bash
 curl -X POST http://localhost:5678/webhook-test/job \
@@ -370,48 +241,47 @@ curl -X POST http://localhost:5678/webhook-test/job \
   }'
 ```
 
-## Project Structure
+## Known Limitations
 
-```
-resume_analyzer_n8n/
-│
-├── .env.example
-├── .gitignore
-├── compose.yaml
-├── schema.sql
-├── README.md
-│
-├── Job_workflow.json
-└── Resume_Analyzer.json
-```
+- Experience is read only from durations written as "N years". Date ranges such as "Aug 2024 – Present" count as zero.
+- Analyzing a resume again adds a new analysis row instead of replacing the previous one; the latest is used.
+- Creating a job with a URL that already exists returns an error instead of updating the job.
+- OpenAI errors and timeouts surface as generic server errors.
+- No authentication; the app is intended for local use.
+- Resumes created before PDF storage was added have no original file to download.
 
-Sensitive files such as `.env`, resume PDFs, and other local files are excluded through `.gitignore`.
+## Future Work and Improvements
 
-## Project Status
+### Core fixes
+- **Experience parsing:** read date ranges (including "Present"), calculate experience in years and months, and count overlapping jobs only once
+- **One analysis per resume:** keep only the latest analysis
+- **Job upsert by URL** so the same posting can be submitted again safely
+- **Clearer errors** for OpenAI failures and PDFs without extractable text
+- **Resume file handling:** hide "View Original Resume" when no file is stored
+- **Automated tests:** unit tests for the scoring rules and API tests with OpenAI mocked
 
-### Version 1 — Complete
+### Scalability
+- **Background jobs:** move LLM and embedding calls to a worker queue (Redis) so requests return immediately
+- **Batch embeddings** for skills instead of one request per skill
+- **Vector indexes** (HNSW) for fast similarity search
+- **One-to-many matching:** rank one resume against many jobs, using vector search to shortlist before scoring
+- **Pagination** on list endpoints, structured logging and a health endpoint
 
-The current version provides an end-to-end AI resume and job matching pipeline with:
+### Full local Docker deployment
+- Dockerfiles for the backend, worker and frontend
+- One command to start the whole stack (`docker compose up -d --build`), with health checks, migrations on start-up, persistent volumes and a backup script
 
-- Resume ingestion and PDF text extraction
-- LLM-based information extraction
-- PostgreSQL persistence
-- Webhook-based job ingestion and deduplication
-- LLM-based requirement/evidence extraction
-- Deterministic match scoring
-- Apply / Consider / Skip recommendations
-- Match persistence and deduplication
+### Daily job feed and notifications
+- Fetch new job openings every day from official job APIs and feeds, then analyze and match them automatically
+- Daily email digest of new APPLY / CONSIDER jobs at a time each user chooses on the website
+- "New today" badges, filters and match results on the jobs page
+- User accounts and notification settings
 
-### Future Improvements
-
-- Automated job collection
-- Job board/API integrations
-- Improved skill normalization
-- Semantic similarity using embeddings
-- Vector database integration
-- RAG-based resume analysis
-- AI agent integration
-- Web dashboard
-- Application tracking
-- Automated notifications
-- Better evaluation and benchmarking of matching accuracy
+### AI agents and smart features
+- **Career-page scraper agent** for companies without a job API, running generated code in a disposable, locked-down container
+- **Duplicate job detection** across job boards using embeddings
+- **Weekly skill-gap trends:** the skills that appear most often in jobs you're missing
+- **Resume tailoring suggestions** for strong matches, based only on evidence already in the resume
+- **Feedback signals:** "Applied" / "Not interested" to filter future suggestions
+- **Match explanations** written for recruiters
+- **Evaluation set** of fixed resume/job pairs to catch regressions when prompts or models change
