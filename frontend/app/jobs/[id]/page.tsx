@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { apiUrl } from "@/lib/api";
 
 type Job = {
   id: number;
@@ -28,7 +29,7 @@ export default function JobDetailsPage({
         const { id } = await params;
 
         const response = await fetch(
-          `http://127.0.0.1:8000/api/jobs/${id}`
+          apiUrl(`/api/jobs/${id}`)
         );
 
         if (!response.ok) {

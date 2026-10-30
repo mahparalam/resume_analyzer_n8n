@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import ResumeCard from "@/components/ResumeCard";
+import { apiUrl } from "@/lib/api";
 
 type Resume = {
   id: number;
@@ -20,7 +21,7 @@ export default function ResumesPage() {
     const fetchResumes = async () => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/api/resumes/"
+          apiUrl("/api/resumes/")
         );
 
         if (!response.ok) {

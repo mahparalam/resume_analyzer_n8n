@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { apiUrl } from "@/lib/api";
 
 export default function NewResumePage() {
   const router = useRouter();
@@ -47,7 +48,7 @@ export default function NewResumePage() {
       formData.append("email", email);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/resumes/upload",
+        apiUrl("/api/resumes/upload"),
         {
           method: "POST",
           body: formData,

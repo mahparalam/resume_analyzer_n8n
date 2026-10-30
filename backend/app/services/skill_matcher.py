@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.skill_embedding import SkillEmbedding
-from app.services.embedding_service import create_embedding
+from app.services.embedding_service import EMBEDDING_MODEL, create_embedding
 from app.services.match_engine import normalize_skill
 
 
@@ -32,7 +32,7 @@ def get_or_create_skill_embedding(
         skill_text=skill,
         normalized_text=normalized_skill,
         embedding=vector,
-        model="text-embedding-3-small",
+        model=EMBEDDING_MODEL,
     )
 
     db.add(skill_embedding)

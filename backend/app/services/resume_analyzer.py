@@ -1,19 +1,15 @@
-import os
-
-from dotenv import load_dotenv
 from openai import OpenAI
 
+from app.config import settings
 from app.schemas.resume_analysis import ResumeAnalysis
 
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=settings.openai_api_key)
 
 
 def analyze_resume(resume_text: str) -> ResumeAnalysis:
 
     response = client.responses.parse(
-        model="gpt-5.6-luna",
+        model=settings.openai_model,
         input=[
             {
                 "role": "system",

@@ -2,6 +2,7 @@ import re
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
+from app.config import settings
 from app.database import get_db
 from app.models.resume import Resume
 from app.models.resume_analysis import ResumeAnalysis
@@ -134,15 +135,14 @@ async def upload_resume(
     db.refresh(new_resume)
 
     # Save original PDF using the database ID
-    resume_dir = Path("../files/resumes")
-    resume_dir.mkdir(parents=True, exist_ok=True)
-
-    file_path = resume_dir / f"{new_resume.id}.pdf"
+    relative_path = Path("resumes") / f"{new_resume.id}.pdf"
+    file_path = settings.files_path / relative_path
+    file_path.parent.mkdir(parents=True, exist_ok=True)
 
     file_path.write_bytes(contents)
 
-    # Save the file path in the database
-    new_resume.file_path = str(file_path)
+    # Save the path relative to FILES_DIR in the database
+    new_resume.file_path = relative_path.as_posix()
 
     db.commit()
     db.refresh(new_resume)
@@ -243,7 +243,7 @@ def get_resume_file(
             detail="Original resume file not found",
         )
 
-    file_path = Path(resume.file_path)
+    file_path = settings.files_path / resume.file_path
 
     if not file_path.exists():
         raise HTTPException(

@@ -109,5 +109,12 @@ CREATE TABLE resume_job_matches (
 
 INSERT INTO alembic_version (version_num) VALUES ('df775c301f09') RETURNING alembic_version.version_num;
 
-COMMIT;
+-- Running upgrade df775c301f09 -> ed0f70a867de
 
+UPDATE resumes
+        SET file_path = substr(file_path, length('../files/') + 1)
+        WHERE file_path LIKE '../files/%';
+
+UPDATE alembic_version SET version_num='ed0f70a867de' WHERE alembic_version.version_num = 'df775c301f09';
+
+COMMIT;

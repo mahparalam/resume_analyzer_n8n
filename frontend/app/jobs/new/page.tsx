@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { apiUrl } from "@/lib/api";
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function NewJobPage() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/jobs/",
+        apiUrl("/api/jobs/"),
         {
           method: "POST",
           headers: {

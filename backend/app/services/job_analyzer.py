@@ -1,19 +1,15 @@
-import os
-
-from dotenv import load_dotenv
 from openai import OpenAI
 
+from app.config import settings
 from app.schemas.job_requirement import JobRequirement
 
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=settings.openai_api_key)
 
 
 def analyze_job(job_description: str) -> JobRequirement:
 
     response = client.responses.parse(
-        model="gpt-5.6-luna",
+        model=settings.openai_model,
         input=[
             {
                 "role": "system",
