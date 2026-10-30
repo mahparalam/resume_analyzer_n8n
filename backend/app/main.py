@@ -16,7 +16,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"message": "Resume Intelligence Platform API"}
+    return {"message": "Resume-to-Job Intelligence Engine API"}
 
 
 app.include_router(jobs_router)

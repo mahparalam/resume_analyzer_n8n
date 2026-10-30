@@ -6,7 +6,7 @@ export default function Home() {
       <div className="mx-auto max-w-6xl">
 
         <h1 className="text-3xl font-bold text-gray-900">
-          Resume Intelligence Platform
+          Resume-to-Job Intelligence Engine
         </h1>
 
         <p className="mt-2 text-gray-600">

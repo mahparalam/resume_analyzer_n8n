@@ -1,4 +1,4 @@
--- Resume Intelligence Platform: application database schema
+-- Resume-to-Job Intelligence Engine: application database schema
 -- GENERATED from Alembic migrations; do not edit by hand.
 -- Regenerate: cd backend && alembic upgrade head --sql > ../schema.sql
 -- Apply to a database: cd backend && alembic upgrade head
