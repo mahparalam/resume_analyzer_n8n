@@ -56,7 +56,8 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 **1.4 Resume file handling**
 - [x] Expose `has_file` in `ResumeResponse` (checks the file really exists); hide "View Original Resume" when there is no file
 - [x] Backfill resume 1 from `files/resume.pdf`: copied to `files/resumes/1.pdf`, `file_path` set. Text verified identical apart from bullet characters
-- [~] Backfill resumes 4, 5 and 6 from `files/resume.pdf` (approved 2026-11-03; their text matches exactly). Waiting for Postgres to be running. Note: resume 6 is named "Dolly" but holds the same resume text
+- [x] Backfill resumes 4, 5 and 6 from `files/resume.pdf` (approved 2026-11-03; text verified identical): copied to `files/resumes/{id}.pdf`, `file_path` set. Note: resume 6 is named "Dolly" but holds the same resume text
+- Resumes 2 and 7 have no matching PDF and stay without an original file
 
 **1.5 Robustness**
 - [ ] Handle OpenAI errors and timeouts (return 502/503 with a clear message instead of 500)
