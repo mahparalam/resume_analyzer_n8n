@@ -248,7 +248,7 @@ curl -X POST http://localhost:5678/webhook-test/job \
 - Creating a job with a URL that already exists returns an error instead of updating the job.
 - OpenAI errors and timeouts surface as generic server errors.
 - No authentication; the app is intended for local use.
-- Resumes created before PDF storage was added have no original file to download.
+- Some resumes created before PDF storage was added have no original file, so "View Original Resume" isn't shown for them.
 
 ## Future Work and Improvements
 
@@ -257,7 +257,6 @@ curl -X POST http://localhost:5678/webhook-test/job \
 - **One analysis per resume:** keep only the latest analysis
 - **Job upsert by URL** so the same posting can be submitted again safely
 - **Clearer errors** for OpenAI failures and PDFs without extractable text
-- **Resume file handling:** hide "View Original Resume" when no file is stored
 - **Automated tests:** unit tests for the scoring rules and API tests with OpenAI mocked
 
 ### Scalability

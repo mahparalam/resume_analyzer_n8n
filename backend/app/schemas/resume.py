@@ -12,6 +12,7 @@ class ResumeResponse(BaseModel):
     name: str | None = None
     email: str | None = None
     resume_text: str | None = None
+    has_file: bool = False
 
 class ResumeUpdate(BaseModel):
     name: str

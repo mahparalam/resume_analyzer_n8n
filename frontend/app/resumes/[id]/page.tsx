@@ -9,6 +9,7 @@ type Resume = {
   name: string | null;
   email: string | null;
   resume_text: string | null;
+  has_file: boolean;
 };
 
 type ExperienceItem = {
@@ -179,14 +180,16 @@ export default function ResumePage({
               </p>
             )}
 
-            <a
-              href={apiUrl(`/api/resumes/${resumeId}/file`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-block rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-            >
-              View Original Resume
-            </a>
+            {resume.has_file && (
+              <a
+                href={apiUrl(`/api/resumes/${resumeId}/file`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-block rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                View Original Resume
+              </a>
+            )}
           </div>
 
         {/* AI analysis */}
