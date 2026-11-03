@@ -10,7 +10,7 @@ The roadmap (core fixes → scalability → local Docker deployment → daily jo
 
 Two generations coexist in this repo, sharing one Postgres database:
 
-- **v1 — n8n workflows** (`Resume_Analyzer.json`, `Job_workflow.json`): import into n8n. Scoring lives in n8n JavaScript Code nodes (60% required / 20% preferred / 20% experience). `README.md` documents only this version.
+- **v1 — n8n workflows** (`Resume_Analyzer.json`, `Job_workflow.json`): import into n8n. Scoring lives in n8n JavaScript Code nodes (60% required / 20% preferred / 20% experience). n8n's future role is undecided.
 - **v2 — FastAPI backend (`backend/app/`) + Next.js frontend (`frontend/`)**: the active development path.
 
 ## Commands
@@ -37,7 +37,7 @@ cd frontend && npm run build
 
 There is no test suite. Backend dependencies (direct deps only, pinned): `pip install -r backend/app/requirements.txt` into the repo-root `.venv`.
 
-Backend configuration lives in `backend/app/config.py` (pydantic-settings, `settings` singleton) and is read from env vars and the repo-root `.env`; all options are listed in `.env.example`. Use `settings.*` rather than `os.getenv`. `resumes.file_path` is stored relative to `settings.files_path` (default `<repo>/files`), so the backend works from any working directory. Frontend builds API URLs with `apiUrl()` from `frontend/lib/api.ts` (`NEXT_PUBLIC_API_URL`, inlined at build time).
+Backend configuration lives in `backend/app/config.py` (pydantic-settings, `settings` singleton) and is read from env vars and the repo-root `.env`; all options are listed in `.env.example`. Use `settings.*` rather than `os.getenv`. `resumes.file_path` is stored relative to `settings.files_path` (default `<repo>/files`), so the backend works from any working directory; `Resume.has_file` checks the file really exists and is returned by the API so the UI can hide the PDF link. Frontend builds API URLs with `apiUrl()` from `frontend/lib/api.ts` (`NEXT_PUBLIC_API_URL`, inlined at build time).
 
 Databases: one Postgres server (image `pgvector/pgvector:pg16-trixie`, which must stay on trixie/glibc 2.41 to match the stored collation) holds two databases: `n8n` (`POSTGRES_DB`, n8n's internal tables only) and `resume_app` (`APP_DB`, all app tables; also used by the v1 workflows through n8n's "Postgres account" credential). `db/init/` creates `APP_DB` only when the data volume is empty.
 

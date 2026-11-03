@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.config import settings
 from app.models.base import Base
 
 
@@ -18,3 +19,10 @@ class Resume(Base):
         server_default=text("CURRENT_TIMESTAMP")
     )
     file_path: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def has_file(self) -> bool:
+        if not self.file_path:
+            return False
+
+        return (settings.files_path / self.file_path).is_file()
