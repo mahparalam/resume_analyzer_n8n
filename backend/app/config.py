@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_model: str = "gpt-5.6-luna"
     embedding_model: str = "text-embedding-3-small"
+    openai_timeout: float = 60.0  # seconds per request
+    openai_max_retries: int = 2
 
     # Uploaded resume PDFs; relative paths are resolved from the repo root
     files_dir: Path = Path("files")

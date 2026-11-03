@@ -1,9 +1,6 @@
-from openai import OpenAI
-
 from app.config import settings
 from app.schemas.job_requirement import JobRequirement
-
-client = OpenAI(api_key=settings.openai_api_key)
+from app.services.openai_client import LLMOutputError, client
 
 
 def analyze_job(job_description: str) -> JobRequirement:
@@ -29,5 +26,8 @@ def analyze_job(job_description: str) -> JobRequirement:
         ],
         text_format=JobRequirement,
     )
+
+    if response.output_parsed is None:
+        raise LLMOutputError("No structured output for the job description")
 
     return response.output_parsed

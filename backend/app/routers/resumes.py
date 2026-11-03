@@ -1,5 +1,6 @@
 import re
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from app.config import settings
@@ -112,16 +113,37 @@ async def upload_resume(
 
     contents = await file.read()
 
+    if not contents:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty",
+        )
+
     # Extract text from PDF
-    pdf = PdfReader(BytesIO(contents))
+    try:
+        pdf = PdfReader(BytesIO(contents))
 
-    text = ""
+        text = ""
 
-    for page in pdf.pages:
-        page_text = page.extract_text()
+        for page in pdf.pages:
+            page_text = page.extract_text()
 
-        if page_text:
-            text += page_text + "\n"
+            if page_text:
+                text += page_text + "\n"
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="The file could not be read as a PDF",
+        )
+
+    if not text.strip():
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No text could be extracted from this PDF. "
+                "It may be a scanned image; please upload a text-based PDF."
+            ),
+        )
 
     # Create database record first
     new_resume = Resume(
@@ -162,34 +184,47 @@ def analyze_resume_endpoint(
             detail="Resume not found"
         )
 
+    if not (resume.resume_text or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Resume has no text to analyze",
+        )
+
     # Send resume text to the LLM
     analysis = analyze_resume(resume.resume_text)
 
-    # Save the AI analysis to PostgreSQL
-    new_analysis = ResumeAnalysis(
-        resume_id=resume.id,
-        summary=analysis.summary,
-        skills=analysis.skills,
-        experience=[
-            item.model_dump()
-            for item in analysis.experience
-        ],
-        education=[
-            item.model_dump()
-            for item in analysis.education
-        ],
-        projects=[
-            item.model_dump()
-            for item in analysis.projects
-        ],
+    # Save the AI analysis, replacing any previous one (one per resume)
+    saved_analysis = (
+        db.query(ResumeAnalysis)
+        .filter(ResumeAnalysis.resume_id == resume.id)
+        .first()
     )
 
-    db.add(new_analysis)
+    if saved_analysis is None:
+        saved_analysis = ResumeAnalysis(resume_id=resume.id)
+        db.add(saved_analysis)
+
+    saved_analysis.summary = analysis.summary
+    saved_analysis.skills = analysis.skills
+    saved_analysis.experience = [
+        item.model_dump()
+        for item in analysis.experience
+    ]
+    saved_analysis.education = [
+        item.model_dump()
+        for item in analysis.education
+    ]
+    saved_analysis.projects = [
+        item.model_dump()
+        for item in analysis.projects
+    ]
+    saved_analysis.created_at = func.now()
+
     db.commit()
-    db.refresh(new_analysis)
+    db.refresh(saved_analysis)
 
     # Embed the analysis for semantic matching
-    ensure_resume_embedding(db, new_analysis)
+    ensure_resume_embedding(db, saved_analysis)
 
     return {
         "resume_id": resume.id,

@@ -12,9 +12,11 @@ class ResumeAnalysis(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+    # One analysis per resume; re-analyzing replaces it
     resume_id: Mapped[int] = mapped_column(
         ForeignKey("resumes.id", ondelete="CASCADE"),
-        nullable=False
+        nullable=False,
+        unique=True
     )
 
     summary: Mapped[str | None] = mapped_column(Text)

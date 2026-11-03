@@ -117,4 +117,15 @@ UPDATE resumes
 
 UPDATE alembic_version SET version_num='ed0f70a867de' WHERE alembic_version.version_num = 'df775c301f09';
 
+-- Running upgrade ed0f70a867de -> 8b38113ffed2
+
+DELETE FROM resume_analyses AS older
+        USING resume_analyses AS newer
+        WHERE older.resume_id = newer.resume_id
+          AND older.id < newer.id;
+
+ALTER TABLE resume_analyses ADD CONSTRAINT resume_analyses_resume_id_key UNIQUE (resume_id);
+
+UPDATE alembic_version SET version_num='8b38113ffed2' WHERE alembic_version.version_num = 'ed0f70a867de';
+
 COMMIT;
