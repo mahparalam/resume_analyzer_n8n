@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from typing import List
 from app.database import get_db
@@ -10,19 +11,72 @@ from app.services.embedding_service import ensure_job_embedding
 
 router = APIRouter(prefix="/api/jobs")
 
-@router.post("/", response_model=JobResponse, status_code=201)
-def create_job(job: JobCreate, db: Session = Depends(get_db)):
 
-    new_job = Job(
-        company=job.company,
-        job_title=job.job_title,
-        job_url=job.job_url,
-        job_description=job.job_description
+def apply_job_fields(
+    db: Session,
+    job: Job,
+    job_data: JobCreate | JobUpdate,
+) -> None:
+    description_changed = (
+        job.id is not None
+        and job.job_description != job_data.job_description
     )
 
+    job.company = job_data.company
+    job.job_title = job_data.job_title
+    job.job_url = (job_data.job_url or "").strip() or None
+    job.job_description = job_data.job_description
+
+    # The extracted requirements no longer describe this job;
+    # the job has to be analyzed again before matching
+    if description_changed:
+        (
+            db.query(JobRequirement)
+            .filter(JobRequirement.job_id == job.id)
+            .delete()
+        )
+
+
+def commit_job(db: Session, job: Job) -> None:
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Another job already uses this job URL",
+        )
+
+    db.refresh(job)
+
+
+@router.post("/", response_model=JobResponse, status_code=201)
+def create_job(
+    job: JobCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    # A job URL identifies a posting: submitting it again updates the job
+    job_url = (job.job_url or "").strip()
+
+    existing_job = (
+        db.query(Job).filter(Job.job_url == job_url).first()
+        if job_url
+        else None
+    )
+
+    if existing_job is not None:
+        apply_job_fields(db, existing_job, job)
+        commit_job(db, existing_job)
+        response.status_code = 200
+
+        return existing_job
+
+    new_job = Job()
+    apply_job_fields(db, new_job, job)
+
     db.add(new_job)
-    db.commit()
-    db.refresh(new_job)
+    commit_job(db, new_job)
 
     return new_job
 
@@ -60,13 +114,8 @@ def update_job(
             detail="Job not found"
         )
 
-    job.company = job_data.company
-    job.job_title = job_data.job_title
-    job.job_url = job_data.job_url
-    job.job_description = job_data.job_description
-
-    db.commit()
-    db.refresh(job)
+    apply_job_fields(db, job, job_data)
+    commit_job(db, job)
 
     return job
 

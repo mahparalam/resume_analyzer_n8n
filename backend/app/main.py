@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+from app.errors import register_error_handlers
 from app.routers.jobs import router as jobs_router
 from app.routers.resumes import router as resumes_router
 from app.routers.matches import router as matches_router
@@ -13,6 +14,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+register_error_handlers(app)
 
 @app.get("/")
 def root():

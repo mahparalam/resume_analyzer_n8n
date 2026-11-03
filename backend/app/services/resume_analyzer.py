@@ -1,9 +1,6 @@
-from openai import OpenAI
-
 from app.config import settings
 from app.schemas.resume_analysis import ResumeAnalysis
-
-client = OpenAI(api_key=settings.openai_api_key)
+from app.services.openai_client import LLMOutputError, client
 
 
 def analyze_resume(resume_text: str) -> ResumeAnalysis:
@@ -28,5 +25,8 @@ def analyze_resume(resume_text: str) -> ResumeAnalysis:
         ],
         text_format=ResumeAnalysis,
     )
+
+    if response.output_parsed is None:
+        raise LLMOutputError("No structured output for the resume")
 
     return response.output_parsed

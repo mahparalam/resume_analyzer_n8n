@@ -46,12 +46,14 @@ The LLM never decides whether a candidate is a good fit. It only **extracts evid
 
 Each step is a separate API call:
 
-1. **Upload a resume** (`POST /api/resumes/upload`). Text is extracted with pypdf, and the original PDF is saved under `files/resumes/`.
-2. **Analyze the resume** (`POST /api/resumes/{id}/analyze`). The LLM returns structured data (summary, skills, experience, education, projects), validated against a Pydantic schema. An embedding of the analysis is stored.
-3. **Add and analyze a job** (`POST /api/jobs/`, then `POST /api/jobs/{id}/analyze`). The LLM extracts required and preferred skills, years of experience, education and responsibilities. An embedding is stored.
+1. **Upload a resume** (`POST /api/resumes/upload`). Text is extracted with pypdf, and the original PDF is saved under `files/resumes/`. Empty files, unreadable PDFs and PDFs without extractable text (such as scans) are rejected.
+2. **Analyze the resume** (`POST /api/resumes/{id}/analyze`). The LLM returns structured data (summary, skills, experience, education, projects), validated against a Pydantic schema. Each resume keeps only its latest analysis. An embedding of the analysis is stored.
+3. **Add and analyze a job** (`POST /api/jobs/`, then `POST /api/jobs/{id}/analyze`). Submitting a job URL that already exists updates that job; if its description changed, it must be analyzed again. The LLM extracts required and preferred skills, years of experience, education and responsibilities. An embedding is stored.
 4. **Match** (`POST /api/matches/` with `{"resume_id": …, "job_id": …}`). Missing or outdated embeddings are created automatically, the score is calculated, and the result is saved. Re-running a match updates the existing result.
 
 Embeddings are cached with a content hash, so unchanged resumes and jobs are never re-embedded.
+
+If OpenAI fails, the API returns a clear message: **504** when it times out, **503** when it can't be reached or is rate-limiting, and **502** for a rejected API key or an unusable answer.
 
 ## Matching Logic
 
@@ -94,7 +96,7 @@ Interactive documentation is available at [http://localhost:8000/docs](http://lo
 | `POST` | `/api/resumes/{id}/analyze` | Run AI analysis on a resume |
 | `GET` | `/api/resumes/{id}/analysis` | Latest analysis for a resume |
 | `GET` | `/api/resumes/{id}/file` | Download the original PDF |
-| `POST` | `/api/jobs/` | Create a job |
+| `POST` | `/api/jobs/` | Create a job, or update the existing job with the same URL |
 | `GET` | `/api/jobs/` · `/api/jobs/{id}` | List or get jobs |
 | `PUT` · `DELETE` | `/api/jobs/{id}` | Update or delete a job |
 | `POST` | `/api/jobs/{id}/analyze` | Run AI analysis on a job description |
@@ -120,7 +122,7 @@ All application tables live in their own database, `resume_app` (set with `APP_D
 | Table | Contents |
 |---|---|
 | `resumes` | Candidate name, email, extracted text, path of the stored PDF |
-| `resume_analyses` | AI analysis of a resume (summary, skills, experience, education, projects as JSONB) |
+| `resume_analyses` | Latest AI analysis of each resume (summary, skills, experience, education, projects as JSONB) |
 | `jobs` | Company, title, URL (unique), description |
 | `job_requirements` | AI-extracted requirements of a job (JSONB) |
 | `resume_job_matches` | Score, matched/missing skills, experience match and recommendation; unique per resume and job |
@@ -189,6 +191,7 @@ All backend settings are read from environment variables or the repo-root `.env`
 | `OPENAI_API_KEY` | — | OpenAI API key |
 | `OPENAI_MODEL` | `gpt-5.6-luna` | Model used for resume and job analysis |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
+| `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES` | `60` / `2` | Seconds per OpenAI request, and retries before giving up |
 | `FILES_DIR` | `files` | Where uploaded PDFs are stored (relative to the repo root) |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated origins allowed to call the API |
 
@@ -244,9 +247,6 @@ curl -X POST http://localhost:5678/webhook-test/job \
 ## Known Limitations
 
 - Experience is read only from durations written as "N years". Date ranges such as "Aug 2024 – Present" count as zero.
-- Analyzing a resume again adds a new analysis row instead of replacing the previous one; the latest is used.
-- Creating a job with a URL that already exists returns an error instead of updating the job.
-- OpenAI errors and timeouts surface as generic server errors.
 - No authentication; the app is intended for local use.
 - Some resumes created before PDF storage was added have no original file, so "View Original Resume" isn't shown for them.
 
@@ -254,9 +254,6 @@ curl -X POST http://localhost:5678/webhook-test/job \
 
 ### Core fixes
 - **Experience parsing:** read date ranges (including "Present"), calculate experience in years and months, and count overlapping jobs only once
-- **One analysis per resume:** keep only the latest analysis
-- **Job upsert by URL** so the same posting can be submitted again safely
-- **Clearer errors** for OpenAI failures and PDFs without extractable text
 - **Automated tests:** unit tests for the scoring rules and API tests with OpenAI mocked
 
 ### Scalability

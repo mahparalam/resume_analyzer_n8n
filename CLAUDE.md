@@ -47,14 +47,18 @@ Layout: `models/` (SQLAlchemy 2.0 `Mapped` style, shared `Base` in `models/base.
 
 Matching pipeline — each step is a separate API call and the later ones fail with 404 if earlier ones haven't run:
 
-1. `POST /api/resumes/upload` — PDF → text via pypdf → `resumes` row; original PDF saved to `files/resumes/{id}.pdf`.
-2. `POST /api/resumes/{id}/analyze` — `services/resume_analyzer.py` uses OpenAI `responses.parse` with a Pydantic `text_format` → **appends** a new `resume_analyses` row (latest by id wins).
+1. `POST /api/resumes/upload` — PDF → text via pypdf → `resumes` row; original PDF saved to `files/resumes/{id}.pdf`. Empty/unreadable PDFs and PDFs with no extractable text are rejected before anything is saved.
+2. `POST /api/resumes/{id}/analyze` — `services/resume_analyzer.py` uses OpenAI `responses.parse` with a Pydantic `text_format` → **upserts** the single `resume_analyses` row for the resume (`UNIQUE(resume_id)`).
 3. `POST /api/jobs/{id}/analyze` — `services/job_analyzer.py`, same pattern → **upserts** the single `job_requirements` row for the job.
+`POST /api/jobs/` upserts on `job_url` (200 when it updated an existing job); a changed description deletes the job's `job_requirements`, so it must be re-analyzed.
+
 4. `POST /api/matches/` `{resume_id, job_id}` — `services/match_engine.calculate_match` → upserts `resume_job_matches` (unique on resume_id+job_id). `matched_skills`/`missing_skills` are stored as JSON strings in TEXT columns.
 
 `match_engine` scoring (sums to 100): required skills 30 + preferred skills 10 (exact match after `normalize_skill`) + semantic similarity 40 (pgvector cosine between resume and job embeddings) + experience 20 (parsed naively from `"N years"` duration strings). Thresholds: ≥80 `APPLY`, ≥60 `CONSIDER`, else `SKIP`.
 
 Embeddings: `services/embedding_service.py` caches vectors (`text-embedding-3-small`, 1536 dims) in the `embeddings` table, unique on `(entity_type, entity_id)`, with a content hash to skip re-embedding; `services/embedding_text.py` builds the text to embed from analysis/requirements. `ensure_resume_embedding` / `ensure_job_embedding` run after each analyze endpoint and again in `POST /api/matches/` (creating missing or stale embeddings, so a match always uses the latest analysis). `services/skill_matcher.py` does per-skill semantic matching via `skill_embeddings` but is not yet wired into `match_engine`.
+OpenAI: all services share one client (`services/openai_client.py`, with `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES`). `app/errors.py` turns any OpenAI SDK error or `LLMOutputError` into a 502/503/504 JSON `detail`, so routers don't catch them individually.
+
 ## Frontend
 
 Next.js 16 App Router, React 19, Tailwind 4. Pages are client components that `fetch(apiUrl("/api/..."))` directly. Backend CORS allows `CORS_ORIGINS` (default `http://localhost:3000`).

@@ -60,10 +60,10 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - Resumes 2 and 7 have no matching PDF and stay without an original file
 
 **1.5 Robustness**
-- [ ] Handle OpenAI errors and timeouts (return 502/503 with a clear message instead of 500)
-- [ ] Validate empty PDF text on upload
-- [ ] `POST /resumes/{id}/analyze` upserts a single analysis per resume. Migration deletes older duplicate rows (keeping the highest id) and adds `UNIQUE(resume_id)`.
-- [ ] `POST /api/jobs/` upserts on `job_url` (the table already has `UNIQUE(job_url)`, so a duplicate currently returns 500). The daily fetch depends on this.
+- [x] Handle OpenAI errors and timeouts: shared client with `OPENAI_TIMEOUT` / `OPENAI_MAX_RETRIES`; `app/errors.py` returns 504 (timeout), 503 (unreachable, rate limit), 502 (bad key, bad answer) with a clear message. The resume page shows that message
+- [x] Validate uploads: empty file (400), unreadable PDF (400), no extractable text (422), all before anything is saved. Analyzing a resume with no text returns 400
+- [x] `POST /resumes/{id}/analyze` upserts a single analysis per resume. Migration `8b38113ffed2` deleted 12 older duplicates (keeping the highest id, which the app already used) and adds `UNIQUE(resume_id)`
+- [x] `POST /api/jobs/` upserts on `job_url` (200 on update). A changed description deletes the job's extracted requirements so it gets re-analyzed. `PUT` onto another job's URL returns 409
 
 **1.6 Experience parsing (approved; changes scores)**
 - [ ] Parse ranges such as "Aug 2024 – Present", "Jul 2024 – Jul 2025", "2020 – 2024", "01/2023 - 06/2024", using en dash, em dash, hyphen or "to"

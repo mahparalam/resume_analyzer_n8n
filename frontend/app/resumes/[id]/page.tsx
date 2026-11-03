@@ -109,7 +109,11 @@ export default function ResumePage({
       );
 
       if (!response.ok) {
-        throw new Error("Failed to analyze resume");
+        const errorData = await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.detail ?? "Failed to analyze resume. Please try again."
+        );
       }
 
       const data = await response.json();
@@ -122,7 +126,9 @@ export default function ResumePage({
     } catch (error) {
       console.error(error);
       setAnalysisError(
-        "Failed to analyze resume. Please try again."
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze resume. Please try again."
       );
     } finally {
       setIsAnalyzing(false);

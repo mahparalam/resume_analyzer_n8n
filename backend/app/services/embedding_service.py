@@ -1,6 +1,5 @@
 import hashlib
 
-from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -12,8 +11,7 @@ from app.services.embedding_text import (
     build_job_embedding_text,
     build_resume_embedding_text,
 )
-
-client = OpenAI(api_key=settings.openai_api_key)
+from app.services.openai_client import client
 
 EMBEDDING_MODEL = settings.embedding_model
 
